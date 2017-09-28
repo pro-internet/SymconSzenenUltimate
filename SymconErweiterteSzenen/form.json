@@ -1,0 +1,41 @@
+{
+  "elements":
+  [
+	{
+		"type": "List",
+		"name": "Names",
+		"caption": "Namen",
+		"rowCount": 5,
+		"add": true,
+		"delete": true,
+		"columns": [{
+		  "label": "Name",
+		  "name": "name", 
+		  "width": "100px",
+		  "add": 0,
+		  "edit": {
+		  	  "type": "ValidationTextBox"
+		  }
+		}, {
+		 "label": "Position",
+		 "name": "Position",
+		 "width": "50px",
+		 "add": 0,
+		 "visible": true,
+		 "edit": {
+		  	  "type": "ValidationTextBox"
+		  }
+		},
+		{
+		 "label": "ID",
+		 "name": "ID",
+		 "width": "50px",
+		 "add": 0,
+		 "visible": true,
+		 "save": true
+		}
+	  ]
+	},
+	{ "type": "SelectVariable", "name": "Sensor", "caption": "Sensor" }
+  ]
+}

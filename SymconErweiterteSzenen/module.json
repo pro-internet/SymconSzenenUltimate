@@ -1,0 +1,14 @@
+{
+    "id": "{7416d312-31a5-409a-9dc1-5260ad050d79}",
+    "name": "UltimateSzenenSteuerung",
+    "type": 3,
+    "vendor": "prointernet",
+    "aliases": 
+    [
+        "SzenenSteuerung Ultimate"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "USZS"
+}
