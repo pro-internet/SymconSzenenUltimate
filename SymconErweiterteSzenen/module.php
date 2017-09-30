@@ -624,7 +624,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 
 		$actualIdent = str_replace("Sensor", "", $SceneIdent);
 		$selectValue = str_replace("Scene", "", $actualIdent);
-		$sceneDataID = IPS_GetObjectIDByIdent($SceneIdent."Data", $this->InstanceID);
+		$sceneDataID = IPS_GetObjectIDByIdent($actualIdent."Data", $this->InstanceID);
 		$dataStr = GetValue($sceneDataID);
 		$data = wddx_deserialize($dataStr);
 		if($data != NULL && strlen($dataStr) > 3) {
