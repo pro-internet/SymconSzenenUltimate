@@ -825,7 +825,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 			}
 			else //Delete all excessive objects
 			{
-				foreach(IPS_GetChildrenIDs($this->instanceID) as $child)
+				foreach(IPS_GetChildrenIDs($this->InstanceID) as $child)
 				{
 					$ident = IPS_GetObject($child)['ObjectIdent'];
 					if(strpos($ident, "Timer") !== false || strpos($ident, "Status") !== false)
