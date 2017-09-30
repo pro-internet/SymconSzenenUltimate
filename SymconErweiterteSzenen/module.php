@@ -504,18 +504,23 @@ class UltimateSzenenSteuerung extends IPSModule {
 					IPS_SetParent($vid, $this->InstanceID);
 					IPS_SetName($vid, "Durchlauf");
 					IPS_SetIdent($vid, "Status");
+					IPS_SetPosition($vid, -100);
 					IPS_SetVariableCustomProfile($vid, "SZS.StartStopButton");
 					IPS_SetVariableCustomAction($vid,$svs);
 				}
 				
 				// Create Durchlauf Start/Stop OnRefresh Event
+				// and Timer Variables
 				{
 					//Create Timer Value Variables
 					for($i = 0; $i < sizeof($data); $i++)
 					{
-						$ID = @$data[$i][$ID];
+						$ID = @$data[$i]['ID'];
 						if(@IPS_GetObjectIDByIdent("Timer$ID", $this->InstanceID) === false)
+						{
 							$vid = IPS_CreateVariable(1 /* TimerValues */);
+							SetValue($vid, 0);
+						}
 						else
 							$vid = IPS_GetObjectIDByIdent("Timer$ID", $this->InstanceID);
 						IPS_SetParent($vid, $this->InstanceID);
@@ -525,17 +530,18 @@ class UltimateSzenenSteuerung extends IPSModule {
 						IPS_SetVariableCustomProfile($vid, "SZS.Minutes");
 						IPS_SetVariableCustomAction($vid, $svs);
 						$this->EnableAction("Timer$ID");
-						SetValue($vid, 0);
 					}
 
-					if(@IPS_GetObjectIDByIdent("StatusEvent", $this->InstanceID) === false)
+					$durchlaufID = IPS_GetObjectIDByIdent("Status", $this->InstanceID);
+
+					if(@IPS_GetObjectIDByIdent("StatusEvent", $eventsCat) === false)
 						$vid = IPS_CreateEvent(0 /* Ausgelößtes Event */);
 					else
-						$vid = IPS_GetObjectIDByIdent("StatusEvent", $this->InstanceID);
+						$vid = IPS_GetObjectIDByIdent("StatusEvent", $eventsCat);
 					IPS_SetParent($vid, $eventsCat);
 					IPS_SetName($vid, "Durchlauf.OnRefresh");
 					IPS_SetIdent($vid, "StatusEvent");
-					IPS_SetEventTrigger($vid,0 /*bei aktuallisierung*/, $svs);
+					IPS_SetEventTrigger($vid,0 /*bei aktuallisierung*/, $durchlaufID);
 					IPS_SetEventScript($vid,'<?
 					
 					$association = IPS_GetVariableProfile("SZS.StartStopButton")["Associations"]; 
@@ -614,7 +620,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 							$loop = 0;
 						}
 						
-						$svid = IPS_GetObjectIDByIdent("Timer1", '. $this->InstanceID .');
+						$svid = IPS_GetObjectIDByIdent("Timer'. $data[0]['ID'] .'", '. $this->InstanceID .');
 						$vid = IPS_CreateEvent(1 /* zyklisch */);
 						IPS_SetParent($vid, '. $this->InstanceID .');
 						IPS_SetName($vid, "Cycling Timer");
@@ -637,29 +643,60 @@ class UltimateSzenenSteuerung extends IPSModule {
 						return \$arr;
 					}
 
+					function GetAssociationByName(\$profile, \$name)
+					{
+						\$associations = IPS_GetVariableProfile(\$profile)[\"Associations\"];
+						foreach(\$associations as \$i => \$assoc)
+						{
+							if(\$assoc[\"Name\"] == \$name)
+							{
+								return \$i;
+							}
+						}
+						return false;
+					}
+
 					IPS_SetEventActive($vid,false);
 					IPS_Sleep(100);
 					\$data = json_decode(IPS_GetConfiguration('. $this->InstanceID .'), true);
 					\$data = json_decode(\$data[\"Names\"], true);
 					\$data = sortByKey(\$data, \"Position\");
+					\$dataTable = \$data;
 					\$oldPos = (IPS_GetObject($vid)[\"ObjectPosition\"] - 2) / 3;
-					$nextSceneID = 0;
+					\$nextSceneID = 0;
+					\$nextEntry = array();
 					foreach(\$data as \$i => \$entry)
 					{
 						if(\$entry[\"Position\"] == \$oldPos)
 						{
 							\$nextSceneID = @\$data[\$i + 1][\"ID\"];
+							\$nextEntry = @\$data[\$i + 1];
 						}
 					}
 
-					foreach(\$data 
-					\$loop = $loop;
+					\$loop = json_decode(IPS_GetConfiguration('. $this->InstanceID .'), true)[\"Loop\"];
 
 					if(@IPS_GetObjectIDByIdent(\"Scene\".\$nextSceneID, '. $this->InstanceID .') !== false)
 					{
 						\$data = wddx_deserialize(GetValue(IPS_GetObjectIDByIdent(\"Scene\".\$nextSceneID.\"Data\", '. $this->InstanceID .')));
 						\$timerTime = GetValue(IPS_GetObjectIDByIdent(\"Timer\".\$nextSceneID, '. $this->InstanceID .'));
 							if(\$data != NULL && \$timerTime != 0) {
+
+								//Set Selector to current Scene
+								if(@IPS_GetObjectIDByIdent(\"Scene\".\$nextSceneID, '. $this->InstanceID .') !== false)
+								{
+									\$selectVar = IPS_GetObjectIDByIdent(\"Selector\", IPS_GetParent('.$this->InstanceID.'));
+									\$eventsCat = IPS_GetObjectIDByIdent(\"EventsCat\", '.$this->InstanceID.');
+									\$selectEvent = IPS_GetObjectIDByIdent(\"SelectorOnChange\", \$eventsCat);
+									IPS_SetEventActive(\$selectEvent, false);
+									IPS_Sleep(100);
+									\$sceneVar = IPS_GetObjectIDByIdent(\"Scene\".\$nextSceneID, '. $this->InstanceID .');
+									\$sceneNum = GetAssociationByName(\"USZS.Selector\" . '.$this->InstanceID.', IPS_GetObject(\$sceneVar)[\"ObjectName\"]);
+									SetValue(\$selectVar, \$sceneNum);
+									IPS_Sleep(100);
+									IPS_SetEventActive(\$selectEvent, true);
+								}
+
 								foreach(\$data as \$id => \$value) {
 									if (IPS_VariableExists(\$id)){
 										\$o = IPS_GetObject(\$id);
@@ -668,7 +705,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 											\$actionID = \$v[\"VariableCustomAction\"];
 										else
 											\$actionID = \$v[\"VariableAction\"];
-										
+
 										//Skip this device if we do not have a proper id
 										if(\$actionID < 10000)
 										{
@@ -688,7 +725,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 							}
 					
 						\$svid = IPS_GetObjectIDByIdent(\"Timer\". \$nextSceneID, '. $this->InstanceID .');
-						IPS_SetPosition($vid, IPS_GetObject($vid)[\"ObjectPosition\"] + 2);
+						IPS_SetPosition($vid, \$nextEntry[\"Position\"] * 3 + 2);
 						IPS_SetEventCyclicTimeBounds($vid,time()+1+GetValue(\$svid)*60,time()+1+GetValue(\$svid)*60);
 						IPS_Sleep(100);
 						IPS_SetEventActive($vid,true);
@@ -700,6 +737,22 @@ class UltimateSzenenSteuerung extends IPSModule {
 						\$timerTime = GetValue(IPS_GetObjectIDByIdent(\"Timer\" . \$firstSceneID , '. $this->InstanceID .'));
 							
 							if(\$data != NULL && \$timerTime != 0) {
+
+								//Set Selector to current Scene
+								if(@IPS_GetObjectIDByIdent(\"Scene\".\$firstSceneID ,'. $this->InstanceID .') !== false)
+								{
+									\$selectVar = IPS_GetObjectIDByIdent(\"Selector\", IPS_GetParent('.$this->InstanceID.'));
+									\$eventsCat = IPS_GetObjectIDByIdent(\"EventsCat\", '.$this->InstanceID.');
+									\$selectEvent = IPS_GetObjectIDByIdent(\"SelectorOnChange\", \$eventsCat);
+									IPS_SetEventActive(\$selectEvent, false);
+									IPS_Sleep(100);
+									\$sceneVar = \IPS_GetObjectIDByIdent(\"Scene\".\$firstSceneID, '. $this->InstanceID .');
+									\$sceneNum = GetAssociationByName(\"USZS.Selector\" . '.$this->InstanceID.', IPS_GetObject(\$sceneVar)[\"ObjectName\"]);
+									SetValue(\$selectVar, \$sceneNum);
+									IPS_Sleep(100);
+									IPS_SetEventActive(\$selectEvent, true);
+								}
+
 								foreach(\$data as \$id => \$value) {
 									if (IPS_VariableExists(\$id)){
 										\$o = IPS_GetObject(\$id);
@@ -708,7 +761,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 											\$actionID = \$v[\"VariableCustomAction\"];
 										else
 											\$actionID = \$v[\"VariableAction\"];
-										
+
 										//Skip this device if we do not have a proper id
 										if(\$actionID < 10000)
 										{
@@ -728,7 +781,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 							}
 						
 						\$svid = IPS_GetObjectIDByIdent(\"Timer\" . \$firstSceneID ,'. $this->InstanceID .');
-						IPS_SetPosition($vid, 3);
+						IPS_SetPosition($vid, \$dataTable[0][\"Position\"] * 3 + 2);
 						IPS_SetEventCyclicTimeBounds($vid,time()+1+GetValue(\$svid)*60,time()+1+GetValue(\$svid)*60);
 						IPS_Sleep(100);
 						IPS_SetEventActive($vid,true);
@@ -758,7 +811,10 @@ class UltimateSzenenSteuerung extends IPSModule {
 									
 									//Skip this device if we do not have a proper id
 										if(\$actionID < 10000)
+										{
+											SetValue(\$id, \$value);
 											continue;
+										}
 										
 									switch(\$type)
 									{
@@ -788,10 +844,39 @@ class UltimateSzenenSteuerung extends IPSModule {
 					
 					?>");
 						
+						function GetAssociationByName($profile, $name)
+						{
+							$associations = IPS_GetVariableProfile($profile)["Associations"];
+							foreach($associations as $i => $assoc)
+							{
+								if($assoc["Name"] == $name)
+								{
+									return $i;
+								}
+							}
+							return false;
+						}
+
 						//event run first scene
-						$data = wddx_deserialize(GetValue(IPS_GetObjectIDByIdent("Scene1Data", '. $this->InstanceID .')));
-						$timerTime = GetValue(IPS_GetObjectIDByIdent("Timer1", '. $this->InstanceID .'));
+						$data = wddx_deserialize(GetValue(IPS_GetObjectIDByIdent("Scene". '. $data[0]['ID'] .' ."Data", '. $this->InstanceID .')));
+						$timerTime = GetValue(IPS_GetObjectIDByIdent("Timer'. $data[0]['ID'] .'", '. $this->InstanceID .'));
 							if($data != NULL && $timerTime != 0) {
+
+								//Set Selector to current Scene
+								if(@IPS_GetObjectIDByIdent("Scene". '. $data[0]['ID'] .', '. $this->InstanceID .') !== false)
+								{
+									$selectVar = IPS_GetObjectIDByIdent("Selector", IPS_GetParent('.$this->InstanceID.'));
+									$eventsCat = IPS_GetObjectIDByIdent("EventsCat", '.$this->InstanceID.');
+									$selectEvent = IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat);
+									IPS_SetEventActive($selectEvent, false);
+									IPS_Sleep(100);
+									$sceneVar = IPS_GetObjectIDByIdent("Scene". '. $data[0]['ID'] .', '. $this->InstanceID .');
+									$sceneNum = GetAssociationByName("USZS.Selector" . '.$this->InstanceID.', IPS_GetObject($sceneVar)["ObjectName"]);
+									SetValue($selectVar, $sceneNum);
+									IPS_Sleep(100);
+									IPS_SetEventActive($selectEvent, true);
+								}
+
 								foreach($data as $id => $value) {
 									if (IPS_VariableExists($id)){
 										$o = IPS_GetObject($id);
@@ -800,7 +885,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 											$actionID = $v["VariableCustomAction"];
 										else
 											$actionID = $v["VariableAction"];
-										
+
 										//Skip this device if we do not have a proper id
 										if($actionID < 10000)
 										{
@@ -829,7 +914,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 				{
 					$ident = IPS_GetObject($child)['ObjectIdent'];
 					if(strpos($ident, "Timer") !== false || strpos($ident, "Status") !== false)
-						IPS_DeleteVariable($child);
+						$this->Del($child);
 				}
 				if(@IPS_GetObjectIDbyIdent("StatusEvent", $eventsCat) !== false)
 					IPS_DeleteEvent(IPS_GetObjectIDbyIdent("StatusEvent", $eventsCat));
@@ -840,12 +925,15 @@ class UltimateSzenenSteuerung extends IPSModule {
 			foreach($ChildrenIDs as $child)
 			{
 				$ident = IPS_GetObject($child)['ObjectIdent'];
-				if(strpos($ident, "Scene") !== false)
+				if(strpos($ident, "Scene") !== false || (strpos($ident, "Timer") !== false && strpos($ident, "Event") === false))
 				{
 					$entryExists = false;
 					foreach($data as $j => $entry)
 					{
-						if(str_replace("Scene", "", $ident) == $entry['ID'])
+						$excessiveID = str_replace("Scene", "", $ident);
+						$excessiveID = str_replace("Data", "", $excessiveID);
+						$excessiveID = str_replace("Timer", "", $excessiveID);
+						if($excessiveID == $entry['ID'])
 						{
 							$entryExists = true;
 						}
@@ -853,8 +941,6 @@ class UltimateSzenenSteuerung extends IPSModule {
 					if($entryExists == false)
 					{
 						//copy values of older version of the module to the new one (shouldn't occur at all)
-						$excessiveID = str_replace("Scene", "", $ident);
-						$excessiveID = str_replace("Data", "", $excessiveID);
 						if($excessiveID < 9999)
 						{
 							IPS_LogMessage("SceneModule", "copy values of an older version of the module to the new one");
