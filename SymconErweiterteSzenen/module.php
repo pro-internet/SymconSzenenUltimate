@@ -34,6 +34,9 @@ class UltimateSzenenSteuerung extends IPSModule {
 		{
 			$this->RegisterPropertyString("Names", "");
 			$this->RegisterPropertyInteger("Sensor", 0);
+			$this->RegisterPropertyBoolean("ModeDaySet", true);
+			$this->RegisterPropertyBoolean("ModeTime", false);
+			$this->RegisterPropertyBoolean("Loop", false);
 			$this->CreateSetValueScript($this->InstanceID);
 		}
 
@@ -46,7 +49,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 		}
 
 		if(!IPS_VariableProfileExists("Switch")){
-			 // Create Switch Profile if its not exists
+			 // Create Switch Profile if it does not exist
 			 IPS_CreateVariableProfile("Switch",0);
 			 IPS_SetVariableProfileValues("Switch",0,1,1);
 			 IPS_SetVariableProfileAssociation("Switch",0,"Aus","",-1);
@@ -54,6 +57,22 @@ class UltimateSzenenSteuerung extends IPSModule {
 			 IPS_SetVariableProfileIcon("Switch","Power");
 
 			 IPS_SetVariableCustomProfile($vid,"Switch");
+		}
+
+		if(!IPS_VariableProfileExists("SZS.Minutes")){
+			// Create Minutes Profile if it does not exist
+			IPS_CreateVariableProfile("SZS.Minutes", 1);
+			IPS_SetVariableProfileValues("SZS.Minutes", 0, 120, 1);
+			IPS_SetVariableProfileText("SZS.Minutes",""," Min.");
+			//IPS_SetVariableProfileIcon("SZS.Minutes", "");
+		}
+
+		if(!IPS_VariableProfileExists("SZS.StartStopButton")){
+			// Create Start/Stop Button Profile if it does not exist
+			IPS_CreateVariableProfile("SZS.StartStopButton", 1);
+			IPS_SetVariableProfileValues("SZS.StartStopButton", 1, 1, 0);
+			//IPS_SetVariableProfileIcon("SZS.StartStopButton", "");
+			IPS_SetVariableProfileAssociation("SZS.StartStopButton", 1, "Start", "", -1);
 		}
 
 	}
@@ -67,56 +86,73 @@ class UltimateSzenenSteuerung extends IPSModule {
 		//Never delete this line!
 		parent::ApplyChanges();
 
-		$this->RemoveExcessiveProfiles("ESZS.Selector");
-		$this->RemoveExcessiveProfiles("ESZS.Sets");
+		$this->RemoveExcessiveProfiles("USZS.Selector");
+		$this->RemoveExcessiveProfiles("USZS.Sets");
+
+		// Create Events Category
+		if(@IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID) === false)
+		{
+			$eventsCat = IPS_CreateCategory();
+			IPS_SetName($eventsCat, "Events");
+			IPS_SetIdent($eventsCat, "EventsCat");
+			IPS_SetParent($eventsCat, $this->InstanceID);
+			IPS_SetHidden($eventsCat, true);
+		}
+		else
+		{
+			$eventsCat = IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID);
+		}
 		
-        //Create Targets Dummy Instance
+        // Create Targets Dummy Instance
 		if(@IPS_GetObjectIDByIdent("Targets", IPS_GetParent($this->InstanceID)) === false)
 		{
 			$DummyGUID = $this->GetModuleIDByName();
 			$insID = IPS_CreateInstance($DummyGUID);
-			$dummyExisted = false;
 		}
 		else
 		{
 			$insID = IPS_GetObjectIDByIdent("Targets", IPS_GetParent($this->InstanceID));
-			$dummyExisted = true;
 		}
 		IPS_SetName($insID, "Targets");
 		IPS_SetParent($insID, IPS_GetParent($this->InstanceID));
 		IPS_SetPosition($insID, 9999);
 		IPS_SetIdent($insID, "Targets");
 
-		//See if theres an old Targets Folder
-		if(@IPS_GetObjectIDByIdent("Targets", $this->InstanceID) !== false)
-		{
-			//Resolve Update->Downgrade Patch discrepancy || Delete excessive targets
-			if($dummyExisted)
-			{
-				foreach(IPS_GetChildrenIDs($insID) as $chID)
-				{
-					$this->Del($chID);
-				}
-			}
-			//move targets of "Targets"-Folder into "Targets"-Dummy Instance
-			$targetsID = IPS_GetObjectIDByIdent("Targets", $this->InstanceID);
-			foreach(IPS_GetChildrenIDs($targetsID) as $targetLinkID)
-			{
-				$content = array_merge(IPS_GetObject($targetLinkID), IPS_GetLink($targetLinkID));
-				$content["ParentID"] = $insID;
-				$this->CreateLink($content);
-			}
-            $this->Del($targetsID);
-		}
-		
-		//$this->CreateCategoryByIdent($this->InstanceID, "Targets", "Targets");
 		$data = json_decode($this->ReadPropertyString("Names"),true);
-
 		if($data != "")
 		{
 			IPS_SetPosition($this->InstanceID, -700);
+			
+			//resolve the Positioning of the Scenes
+			{
+				// decide whether to set the position by Creation Order or by Custom (user) order
+				$noPos = true;
+				foreach($data as $d)
+				{
+					if($d['Position'] !== 0)
+					{
+						$noPos = false;
+					}
+				}
+				// sort the dataset accordingly
+				if($noPos === false)
+					$data = $this->sortByKey($data, "Position");		
+				else
+				{
+					foreach($data as $l => $d)
+					{
+						$data[$l]['Position'] = $l;
+					}
+					$configModule['Names'] = json_encode($data);
+					$configJSON = json_encode($configModule);
+					IPS_SetConfiguration($this->InstanceID, $configJSON);
+					IPS_ApplyChanges($this->InstanceID);
+					return;
+				}
+			}
 
-			//copy Values of the Sets and Selector Profile
+			// copy Values of the Sets and Selector Profile if they already exist
+			// will only trigger if the mode is set to DaySets
 			if(@IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID)) !== false)
 			{
 				$setSavedValues = array();
@@ -126,410 +162,357 @@ class UltimateSzenenSteuerung extends IPSModule {
 					$setSavedValues[$l]['obj'] = IPS_GetObject($child);
 					$setSavedValues[$l]['var'] = IPS_GetVariable($child);
 					$setSavedValues[$l]['var']['Value'] = GetValue($child);
-					$setSavedValues[$l]['profile'] = IPS_GetVariableProfile("ESZS.Selector" . $this->InstanceID);
-				}
-			}
-			
-			//check if the scenes were already created with IDs but it was patched down
-			if($data[0]['ID'] == null || $data[0]['ID'] == 0)
-			{
-				foreach(IPS_GetChildrenIDs($this->InstanceID) as $i => $child)
-				{
-					$ident = IPS_GetObject($child)['ObjectIdent'];
-					if(strpos($ident, "Scene") !== false && strpos($ident, "Data") !== true)
-					{
-						$ID = str_replace("Scene", "", $ident);
-						if($ID > 9999)
-						{
-							$configModule = json_decode(IPS_GetConfiguration($this->InstanceID), true);
-							$data[$i]['ID'] = $ID;
-							$configModule['Names'] = json_encode($data);
-							$configJSON = json_encode($configModule);
-							IPS_SetConfiguration($this->InstanceID, $configJSON);
-							IPS_ApplyChanges($this->InstanceID);
-						}
-					}
+					$setSavedValues[$l]['profile'] = IPS_GetVariableProfile("USZS.Selector" . $this->InstanceID);
 				}
 			}
 
-			//basically check if it's an update and keep the current scenes alive
-			$update = false;
-			foreach(IPS_GetChildrenIDs($this->InstanceID) as $child)
+			// Create (raw) Selector profile
+			if(IPS_VariableProfileExists("USZS.Selector" . $this->InstanceID))
 			{
-				$ident = IPS_GetObject($child)['ObjectIdent'];
-				if(strpos($ident, "Scene") !== false && strpos($ident, "Data") !== true)
-				{
-					$sceneNum = str_replace("Scene", "", $ident);
-					if($sceneNum < 9999)
-					{
-						$update = true;
-						$configModule = json_decode(IPS_GetConfiguration($this->InstanceID), true);
-						$ID = rand(10000, 99999);
-						$data[$sceneNum - 1]['ID'] = $ID;
-						$configModule['Names'] = json_encode($data);
-						$configJSON = json_encode($configModule);
-						//change the properties of the scene to the new ones
-						IPS_SetIdent($child, "Scene$ID");
-						$dataID = IPS_GetObjectIDByIdent("Scene$sceneNum" . "Data", $this->InstanceID);
-						IPS_SetIdent($dataID, "Scene$ID" . "Data");
-					}
-				}
-			}
-			if($update)
-			{
-				IPS_SetConfiguration($this->InstanceID, $configJSON);
-				IPS_ApplyChanges($this->InstanceID);
-			}
-			
-			//Selector profile
-			if(IPS_VariableProfileExists("ESZS.Selector" . $this->InstanceID))
-			{
-				IPS_DeleteVariableProfile("ESZS.Selector" . $this->InstanceID);
-				IPS_CreateVariableProfile("ESZS.Selector" . $this->InstanceID, 1);
-				IPS_SetVariableProfileIcon("ESZS.Selector" . $this->InstanceID, "Rocket");
+				IPS_DeleteVariableProfile("USZS.Selector" . $this->InstanceID);
+				IPS_CreateVariableProfile("USZS.Selector" . $this->InstanceID, 1);
+				IPS_SetVariableProfileIcon("USZS.Selector" . $this->InstanceID, "Rocket");
 			}
 			else
 			{
-				IPS_CreateVariableProfile("ESZS.Selector" . $this->InstanceID, 1);
-				IPS_SetVariableProfileIcon("ESZS.Selector" . $this->InstanceID, "Rocket");
+				IPS_CreateVariableProfile("USZS.Selector" . $this->InstanceID, 1);
+				IPS_SetVariableProfileIcon("USZS.Selector" . $this->InstanceID, "Rocket");
 			}
 
-			//Events Category
-			if(@IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID) === false)
+			//Create all associated Variables and Configure the "USZS.Selector" Profile accordingly
+			for($i = 0; $i < sizeof($data); $i++)
 			{
-				$eventsCat = IPS_CreateCategory();
-				IPS_SetName($eventsCat, "Events");
-				IPS_SetIdent($eventsCat, "EventsCat");
-				IPS_SetParent($eventsCat, $this->InstanceID);
-				IPS_SetHidden($eventsCat, true);
-			}
-			else
-			{
-				$eventsCat = IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID);
-			}
-			
-			$noPos = true;
-			foreach($data as $d)
-			{
-				if($d['Position'] !== 0)
+				$data = json_decode($this->ReadPropertyString("Names"),true);
+				$data = $this->sortByKey($data, "Position");
+				$ID = @$data[$i]['ID'];
+				//Set Configuration for new Scenes
+				if($ID == 0 || $ID == null)
 				{
-					$noPos = false;
+					$configModule = json_decode(IPS_GetConfiguration($this->InstanceID), true);
+					$ID = rand(10000, 99999);
+					$data[$i]['ID'] = $ID;
+					$configModule['Names'] = json_encode($data);
+					$configJSON = json_encode($configModule);
+					IPS_SetConfiguration($this->InstanceID, $configJSON);
+					IPS_ApplyChanges($this->InstanceID);
+					return;
 				}
-			}
-			if($noPos === false)
-				$data = $this->sortByKey($data, "Position");		
-			else
-			{
-				foreach($data as $l => $d)
+				
+				//Create Scene Variable
+				if(@IPS_GetObjectIDByIdent("Scene".$ID, $this->InstanceID) === false){
+					//Scene
+					$vid = IPS_CreateVariable(1 /* int */);
+					IPS_LogMessage("SceneModule", "Creating new Scene Variable...");
+					SetValue($vid, 2);
+				} else
 				{
-					$data[$l]['Position'] = $l;
+					$vid = IPS_GetObjectIDByIdent("Scene".$ID, $this->InstanceID);
 				}
-				$configModule['Names'] = json_encode($data);
-				$configJSON = json_encode($configModule);
-				IPS_SetConfiguration($this->InstanceID, $configJSON);
-				IPS_ApplyChanges($this->InstanceID);
-				$standBy = true;
-			}
-			
-			$standBy = false;
-			if($update === false)
-			{
-				for($i = 0; $i < sizeof($data); $i++)
+				IPS_SetParent($vid, $this->InstanceID);
+				IPS_SetName($vid, $data[$i]['name']);
+				IPS_SetIdent($vid, "Scene".$ID);
+				IPS_SetPosition($vid, $data[$i]['Position']);
+				IPS_SetVariableCustomProfile($vid, "SZS.SceneControl");
+				$this->EnableAction("Scene".$ID);
+
+				//Create SceneData Variable
+				if(@IPS_GetObjectIDByIdent("Scene".$ID."Data", $this->InstanceID) === false)
 				{
-					$data = json_decode($this->ReadPropertyString("Names"),true);
-					$data = $this->sortByKey($data, "Position");
-					if($noPos)
-						$data[$i]['Position'] = $i;
-					$ID = @$data[$i]['ID'];
-					//Set Configuration for new Scenes
-					if($ID == 0 || $ID == null)
-					{
-						$configModule = json_decode(IPS_GetConfiguration($this->InstanceID), true);
-						$ID = rand(10000, 99999);
-						$data[$i]['ID'] = $ID;
-						$configModule['Names'] = json_encode($data);
-						$configJSON = json_encode($configModule);
-						IPS_SetConfiguration($this->InstanceID, $configJSON);
-						IPS_ApplyChanges($this->InstanceID);
-						$standBy = true;
-						break;
-					}
-					
-					if(@IPS_GetObjectIDByIdent("Scene".$ID, $this->InstanceID) === false){
-						//Scene
-						$vid = IPS_CreateVariable(1 /* Scene */);
-						IPS_LogMessage("DaySet_Scenes", "Creating new Scene Variable...");
-						SetValue($vid, 2);
-					} else
-					{
-						$vid = IPS_GetObjectIDByIdent("Scene".$ID, $this->InstanceID);
-					}
-					IPS_SetParent($vid, $this->InstanceID);
-					IPS_SetName($vid, $data[$i]['name']);
-					IPS_SetIdent($vid, "Scene".$ID);
-					IPS_SetPosition($vid, $data[$i]['Position']);
-					IPS_SetVariableCustomProfile($vid, "SZS.SceneControl");
-					$this->EnableAction("Scene".$ID);
-
-					if(@IPS_GetObjectIDByIdent("Scene".$ID."Data", $this->InstanceID) === false)
-					{
-						//SceneData
-						$vid = IPS_CreateVariable(3 /* SceneData */);
-						IPS_LogMessage("DaySet_Scenes", "Creating new SceneData Variable...");
-					}
-					else
-					{
-						$vid = IPS_GetObjectIDByIdent("Scene".$ID."Data", $this->InstanceID);
-					}
-					IPS_SetParent($vid, $this->InstanceID);
-					IPS_SetName($vid, $data[$i]['name']."Data");
-					IPS_SetIdent($vid, "Scene".$ID."Data");
-					IPS_SetPosition($vid, $data[$i]['Position'] + $this->maxByKey($data, 'Position') + 1);
-					IPS_SetHidden($vid, true);
-
-					//Set Selector profile
-					IPS_SetVariableProfileAssociation("ESZS.Selector" . $this->InstanceID, ($i), $data[$i]['name'],"",-1);
+					//SceneData
+					$vid = IPS_CreateVariable(3 /* SceneData */);
+					IPS_LogMessage("SceneModule", "Creating new SceneData Variable...");
 				}
-			}
-
-			//fix newly added scenes breaking "Sets" presets
-			if(@IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID)) !== false)
-			{	
-				$setIns = IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID));
-				foreach(IPS_GetChildrenIDs($setIns) as $l => $child)
+				else
 				{
-					$o = IPS_GetObject($child);
-					if(isset($setSavedValues))
-					{
-						foreach($setSavedValues as $stateSavedValues)
-						{
-							if($stateSavedValues['obj']['ObjectIdent'] == $o['ObjectIdent'])
-							{
-								$savedName = @$stateSavedValues['profile']['Associations'][$stateSavedValues['var']['Value']]['Name'];
-								$currentName = @IPS_GetVariableProfile("ESZS.Selector" . $this->InstanceID)['Associations'][GetValue($child)]['Name'];
-								if($savedName != $currentName)
-								{
-									$assoc = $this->GetAssociationByName("ESZS.Selector" . $this->InstanceID, $savedName);
-									if($assoc !== false)
-										SetValue($child, $assoc);
-								}
-							}
-						}
-					}
+					$vid = IPS_GetObjectIDByIdent("Scene".$ID."Data", $this->InstanceID);
 				}
+				IPS_SetParent($vid, $this->InstanceID);
+				IPS_SetName($vid, $data[$i]['name']."Data");
+				IPS_SetIdent($vid, "Scene".$ID."Data");
+				IPS_SetPosition($vid, $data[$i]['Position'] + $this->maxByKey($data, 'Position') + 1);
+				IPS_SetHidden($vid, true);
+
+				//Set Selector profile
+				IPS_SetVariableProfileAssociation("USZS.Selector" . $this->InstanceID, ($i), $data[$i]['name'],"",-1);
 			}
 
-			//Selector Variable
-			if(@IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID)) === false)
+			//CreateSelector Variable
 			{
-				$vid = IPS_CreateVariable(1);
+				if(@IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID)) === false)
+				{
+					$vid = IPS_CreateVariable(1);
+				}
+				else
+				{
+					$vid = IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID));
+				}
+				$svs = IPS_GetObjectIDByIdent("SetValueScript", $this->InstanceID);
+				IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
+				IPS_SetName($vid, IPS_GetName($this->InstanceID));
+				IPS_SetIdent($vid, "Selector");
+				IPS_SetPosition($vid, 600);
+				IPS_SetVariableCustomProfile($vid, "USZS.Selector" . $this->InstanceID);
+				IPS_SetVariableCustomAction($vid, $svs);
 			}
-			else
-			{
-				$vid = IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID));
-			}
-			$svs = IPS_GetObjectIDByIdent("SetValueScript", $this->InstanceID);
-			IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
-			IPS_SetName($vid, IPS_GetName($this->InstanceID));
-			IPS_SetIdent($vid, "Selector");
-			IPS_SetPosition($vid, 600);
-			IPS_SetVariableCustomProfile($vid, "ESZS.Selector" . $this->InstanceID);
-			IPS_SetVariableCustomAction($vid, $svs);
 
 			//Create Selector event
-			if(@IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat) === false)
 			{
-				$eid = IPS_CreateEvent(0);
-			}
-			else
-			{
-				$eid = IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat);
-			}
-			IPS_SetParent($eid, $eventsCat);
-			IPS_SetName($eid, "Selector.OnChange");
-			IPS_SetIdent($eid, "SelectorOnChange");
-			IPS_SetEventTrigger($eid, 0, $vid);
-			IPS_SetEventActive($eid, true);
-			IPS_SetEventScript($eid, "ESZS_CallScene(". $this->InstanceID .", GetValue($vid));");
-
-			//Create Sensor event
-			$sensorID = $this->ReadPropertyInteger("Sensor");
-			if($sensorID > 9999)
-				$sensorExists = true;
-			else
-				$sensorExists = false;
-			if($sensorExists)
-			{
-				if(@IPS_GetObjectIDByIdent("SensorEvent", $eventsCat) === false)
+				if(@IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat) === false)
 				{
 					$eid = IPS_CreateEvent(0);
 				}
 				else
 				{
-					$eid = IPS_GetObjectIDByIdent("SensorEvent", $eventsCat);
+					$eid = IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat);
 				}
-				IPS_SetEventTrigger($eid, 1, $sensorID);
-				IPS_SetEventScript($eid, "ESZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
-				IPS_SetEventActive($eid, true);
 				IPS_SetParent($eid, $eventsCat);
-				IPS_SetName($eid, "Sensor.OnChange");
-				IPS_SetIdent($eid, "SensorEvent");
+				IPS_SetName($eid, "Selector.OnChange");
+				IPS_SetIdent($eid, "SelectorOnChange");
+				IPS_SetEventTrigger($eid, 0, $vid);
+				IPS_SetEventActive($eid, true);
+				IPS_SetEventScript($eid, "USZS_CallScene(". $this->InstanceID .", GetValue($vid));");
 			}
 
-			//Create Automatik for this instance
-			if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) === false)
-				$vid = IPS_CreateVariable(0);
-			else
-				$vid = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID));
-			IPS_SetName($vid, "Automatik");
-			IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
-			IPS_SetPosition($vid, -999);
-			IPS_SetIdent($vid, "Automatik");
-			IPS_SetVariableCustomAction($vid, $svs);
-			IPS_SetVariableCustomProfile($vid, "Switch");
+			//Get SetValue Script ID
+			$svs = IPS_GetObjectIDByIdent("SetValueScript", $this->InstanceID);
 
-			//Create Event for Automatik
-			if(@IPS_GetObjectIDByIdent("AutomatikEvent", $eventsCat) === false)
-				$eid = IPS_CreateEvent(0);
-			else
-				$eid = IPS_GetObjectIDByIdent("AutomatikEvent", $eventsCat);
-			IPS_SetEventTrigger($eid, 4, $vid);
-			IPS_SetEventTriggerValue($eid, true);
-			IPS_SetEventScript($eid, "ESZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
-			IPS_SetEventActive($eid, true);
-			IPS_SetParent($eid, $eventsCat);
-			IPS_SetName($eid, "Automatik.OnTrue");
-			IPS_SetIdent($eid, "AutomatikEvent");
-
-			//Create Sperre for this instance
-			if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID)) === false)
-				$vid = IPS_CreateVariable(0);
-			else
-				$vid = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID));
-			IPS_SetName($vid, "Sperre");
-			IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
-			IPS_SetPosition($vid, -999);
-			IPS_SetIdent($vid, "Sperre");
-			IPS_SetVariableCustomAction($vid, $svs);
-			IPS_SetVariableCustomProfile($vid, "Switch");
-
-			//Create Event for Sperre
-			if(@IPS_GetObjectIDByIdent("SperreEvent", $eventsCat) === false)
-				$eid = IPS_CreateEvent(0);
-			else
-				$eid = IPS_GetObjectIDByIdent("SperreEvent", $eventsCat);
-			IPS_SetEventTrigger($eid, 4, $vid);
-			IPS_SetEventTriggerValue($eid, false);
-			IPS_SetEventScript($eid, "ESZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
-			IPS_SetEventActive($eid, true);
-			IPS_SetParent($eid, $eventsCat);
-			IPS_SetName($eid, "Sperre.OnFalse");
-			IPS_SetIdent($eid, "SperreEvent");
-
-			//Create Sensor Selection
-			//by its profile
-			// $sensorID = this->ReadPropertyInteger("Sensor");
-			// if($sensorID > 9999)
-			// {
-				// $profileName = IPS_GetVariable($sensorID)['VariableProfile'];
-				// if($profileName == "")
-					// $profileName = IPS_GetVariable($sensorID)['VariableCustomProfile'];
-				// $profile = IPS_GetVariableProfile($profileName);
-
-			// }
-
-			//Create all the states (Morgen, Tag...)
-			$sensorID = $this->ReadPropertyInteger("Sensor");
-			if($sensorID > 9999)
+			//Get Current Mode
+			$useDaySetModule = $this->ReadPropertyBoolean("ModeDaySet");
+			$useTimeModule = $this->ReadPropertyBoolean("ModeTime");
+			if($useDaySetModule && $useTimeModule)
+				echo "you can't combine multiple Module Modes inside one Module";
+			
+			// All the DaySet Module related things:
+			if($useDaySetModule)
 			{
-				if(@IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID)) === false)
-				{
-					$DummyGUID = $this->GetModuleIDByName();
-					$insID = IPS_CreateInstance($DummyGUID);
-				}
-				else
-				{
-					$insID = IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID));
-				}
-				IPS_SetName($insID, "DaySets");
-				IPS_SetParent($insID, IPS_GetParent($this->InstanceID));
-				IPS_SetPosition($insID, -500);
-				IPS_SetIdent($insID, "Set");
-
-				$sets = array("Früh","Morgen","Tag","Dämmerung","Abend","Nacht");
-				//Create the profile
-				if(IPS_VariableProfileExists("ESZS.Sets" . $this->InstanceID))
-					IPS_DeleteVariableProfile("ESZS.Sets" . $this->InstanceID);
-
-				//Create the variables
-				foreach($sets as $i => $state)
-				{
-					if(@IPS_GetObjectIDByIdent("set$i", $insID) === false)
-						$vid = IPS_CreateVariable(1);
-					else
-						$vid = IPS_GetObjectIDByIdent("set$i", $insID);
-					IPS_SetName($vid, $state);
-					IPS_SetParent($vid, $insID);
-					IPS_SetPosition($vid, $i);
-					IPS_SetIdent($vid, "set$i");
-					IPS_SetVariableCustomAction($vid, $svs);
-					IPS_SetVariableCustomProfile($vid, "ESZS.Selector" . $this->InstanceID);
-
-					//Create Events for the States
-					if(@IPS_GetObjectIDByIdent("SetEvent$i", $eventsCat) === false)
-						$eid = IPS_CreateEvent(0);
-					else
-						$eid = IPS_GetObjectIDByIdent("SetEvent$i", $eventsCat);
-					IPS_SetEventTrigger($eid, 1, $vid);
-					IPS_SetEventScript($eid, "ESZS_CallScene(" . $this->InstanceID . ", ($sensorID *100));");
-					IPS_SetName($eid, "$state".".OnChange");
-					IPS_SetParent($eid, $eventsCat);
-					IPS_SetIdent($eid, "SetEvent$i");
-					IPS_SetEventActive($eid, true);
-				}
-			}
-
-			//Delete excessive Scences
-			if($standBy === false && $update === false)
-			{
-				$ChildrenIDs = IPS_GetChildrenIDs($this->InstanceID);
-				foreach($ChildrenIDs as $child)
-				{
-					$ident = IPS_GetObject($child)['ObjectIdent'];
-					if(strpos($ident, "Scene") !== false)
+				//fix newly added scenes breaking "Sets" presets
+				if(@IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID)) !== false)
+				{	
+					$setIns = IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID));
+					foreach(IPS_GetChildrenIDs($setIns) as $l => $child)
 					{
-						$entryExists = false;
-						foreach($data as $j => $entry)
+						$o = IPS_GetObject($child);
+						if(isset($setSavedValues))
 						{
-							if(str_replace("Scene", "", $ident) == $entry['ID'])
+							foreach($setSavedValues as $stateSavedValues)
 							{
-								$entryExists = true;
-							}
-						}
-						if($entryExists == false)
-						{
-							//copy values of older version of the module to the new one (shouldn't occur at all)
-							$excessiveID = str_replace("Scene", "", $ident);
-							$excessiveID = str_replace("Data", "", $excessiveID);
-							if($excessiveID < 9999)
-							{
-								IPS_LogMessage("DaySet_Scenes", "copy values of an older version of the module to the new one");
-								foreach(IPS_GetChildrenIDs($this->InstanceID) as $c)
+								if($stateSavedValues['obj']['ObjectIdent'] == $o['ObjectIdent'])
 								{
-									if(IPS_GetName($c) == IPS_GetName($child) && $c != $child)
+									$savedName = @$stateSavedValues['profile']['Associations'][$stateSavedValues['var']['Value']]['Name'];
+									$currentName = @IPS_GetVariableProfile("USZS.Selector" . $this->InstanceID)['Associations'][GetValue($child)]['Name'];
+									if($savedName != $currentName)
 									{
-										SetValue($c, GetValue($child));
+										$assoc = $this->GetAssociationByName("USZS.Selector" . $this->InstanceID, $savedName);
+										if($assoc !== false)
+											SetValue($child, $assoc);
 									}
 								}
 							}
-							IPS_DeleteVariable($child);
 						}
 					}
 				}
+
+				// Get Sensor ID
+				$sensorID = $this->ReadPropertyInteger("Sensor");
+
+				//Create Sensor event
+				{
+					if($sensorID > 9999)
+						$sensorExists = true;
+					else
+						$sensorExists = false;
+					if($sensorExists)
+					{
+						if(@IPS_GetObjectIDByIdent("SensorEvent", $eventsCat) === false)
+						{
+							$eid = IPS_CreateEvent(0);
+						}
+						else
+						{
+							$eid = IPS_GetObjectIDByIdent("SensorEvent", $eventsCat);
+						}
+						IPS_SetEventTrigger($eid, 1, $sensorID);
+						IPS_SetEventScript($eid, "USZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
+						IPS_SetEventActive($eid, true);
+						IPS_SetParent($eid, $eventsCat);
+						IPS_SetName($eid, "Sensor.OnChange");
+						IPS_SetIdent($eid, "SensorEvent");
+					}
+				}
+
+				//Create Automatik for this instance
+				{
+					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) === false)
+						$vid = IPS_CreateVariable(0);
+					else
+						$vid = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID));
+					IPS_SetName($vid, "Automatik");
+					IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
+					IPS_SetPosition($vid, -999);
+					IPS_SetIdent($vid, "Automatik");
+					IPS_SetVariableCustomAction($vid, $svs);
+					IPS_SetVariableCustomProfile($vid, "Switch");
+				}
+
+				//Create Event for Automatik
+				{
+					if(@IPS_GetObjectIDByIdent("AutomatikEvent", $eventsCat) === false)
+						$eid = IPS_CreateEvent(0);
+					else
+						$eid = IPS_GetObjectIDByIdent("AutomatikEvent", $eventsCat);
+					IPS_SetEventTrigger($eid, 4, $vid);
+					IPS_SetEventTriggerValue($eid, true);
+					IPS_SetEventScript($eid, "USZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
+					IPS_SetEventActive($eid, true);
+					IPS_SetParent($eid, $eventsCat);
+					IPS_SetName($eid, "Automatik.OnTrue");
+					IPS_SetIdent($eid, "AutomatikEvent");
+				}
+
+				//Create Sperre for this instance
+				{
+					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID)) === false)
+						$vid = IPS_CreateVariable(0);
+					else
+						$vid = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID));
+					IPS_SetName($vid, "Sperre");
+					IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
+					IPS_SetPosition($vid, -999);
+					IPS_SetIdent($vid, "Sperre");
+					IPS_SetVariableCustomAction($vid, $svs);
+					IPS_SetVariableCustomProfile($vid, "Switch");
+				}
+
+				//Create Event for Sperre
+				{
+					if(@IPS_GetObjectIDByIdent("SperreEvent", $eventsCat) === false)
+						$eid = IPS_CreateEvent(0);
+					else
+						$eid = IPS_GetObjectIDByIdent("SperreEvent", $eventsCat);
+					IPS_SetEventTrigger($eid, 4, $vid);
+					IPS_SetEventTriggerValue($eid, false);
+					IPS_SetEventScript($eid, "USZS_CallScene(". $this->InstanceID .", ($sensorID *100));");
+					IPS_SetEventActive($eid, true);
+					IPS_SetParent($eid, $eventsCat);
+					IPS_SetName($eid, "Sperre.OnFalse");
+					IPS_SetIdent($eid, "SperreEvent");
+				}
+
+				//Create all the states (Morgen, Tag...)
+				if($sensorID > 9999)
+				{
+					if(@IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID)) === false)
+					{
+						$DummyGUID = $this->GetModuleIDByName();
+						$insID = IPS_CreateInstance($DummyGUID);
+					}
+					else
+					{
+						$insID = IPS_GetObjectIDByIdent("Set", IPS_GetParent($this->InstanceID));
+					}
+					IPS_SetName($insID, "DaySets");
+					IPS_SetParent($insID, IPS_GetParent($this->InstanceID));
+					IPS_SetPosition($insID, -500);
+					IPS_SetIdent($insID, "Set");
+	
+					$sets = array("Früh","Morgen","Tag","Dämmerung","Abend","Nacht");
+					//Create the variables
+					foreach($sets as $i => $state)
+					{
+						if(@IPS_GetObjectIDByIdent("set$i", $insID) === false)
+							$vid = IPS_CreateVariable(1);
+						else
+							$vid = IPS_GetObjectIDByIdent("set$i", $insID);
+						IPS_SetName($vid, $state);
+						IPS_SetParent($vid, $insID);
+						IPS_SetPosition($vid, $i);
+						IPS_SetIdent($vid, "set$i");
+						IPS_SetVariableCustomAction($vid, $svs);
+						IPS_SetVariableCustomProfile($vid, "USZS.Selector" . $this->InstanceID);
+	
+						//Create Events for the States
+						if(@IPS_GetObjectIDByIdent("SetEvent$i", $eventsCat) === false)
+							$eid = IPS_CreateEvent(0);
+						else
+							$eid = IPS_GetObjectIDByIdent("SetEvent$i", $eventsCat);
+						IPS_SetEventTrigger($eid, 1, $vid);
+						IPS_SetEventScript($eid, "USZS_CallScene(" . $this->InstanceID . ", ($sensorID *100));");
+						IPS_SetName($eid, "$state".".OnChange");
+						IPS_SetParent($eid, $eventsCat);
+						IPS_SetIdent($eid, "SetEvent$i");
+						IPS_SetEventActive($eid, true);
+					}
+				}
 			}
+
+			// All the Time Module related things:
+			if($useTimeModule)
+			{
+				// Get SetValue Script ID
+				$svid = IPS_GetObjectIDByIdent("SetValueScript", $this->InstanceID);
+
+				// Create Durchlauf Start/Stop Variable
+				if(@IPS_GetObjectIDByIdent("Status", $this->InstanceID) === false)
+				{
+					$vid = IPS_CreateVariable(1 /* StartStop */);
+					IPS_SetParent($vid, $this->InstanceID);
+					IPS_SetName($vid, "Durchlauf");
+					IPS_SetIdent($vid, "Status");
+					IPS_SetVariableCustomProfile($vid, "SZS.StartStopButton");
+					IPS_SetVariableCustomAction($vid,$svid);
+				}
+				
+				// Create Durchlauf Start/Stop OnRefresh Event
+				if(@IPS_GetObjectIDByIdent("StatusEvent", $this->InstanceID) !== false)
+					$vid = IPS_GetObjectIDByIdent("StatusEvent", $this->InstanceID);
+				else
+					$vid = IPS_CreateEvent(0 /* Ausgelößtes Event */);
+
+				IPS_SetParent($vid, $eventsCat);
+				IPS_SetName($vid, "Durchlauf.OnRefresh");
+				IPS_SetIdent($vid, "StatusEvent");
+				IPS_SetEventTrigger($vid,0 /*bei aktuallisierung*/, $svid);
+			}
+
+			//Delete excessive Scences
+			$ChildrenIDs = IPS_GetChildrenIDs($this->InstanceID);
+			foreach($ChildrenIDs as $child)
+			{
+				$ident = IPS_GetObject($child)['ObjectIdent'];
+				if(strpos($ident, "Scene") !== false)
+				{
+					$entryExists = false;
+					foreach($data as $j => $entry)
+					{
+						if(str_replace("Scene", "", $ident) == $entry['ID'])
+						{
+							$entryExists = true;
+						}
+					}
+					if($entryExists == false)
+					{
+						//copy values of older version of the module to the new one (shouldn't occur at all)
+						$excessiveID = str_replace("Scene", "", $ident);
+						$excessiveID = str_replace("Data", "", $excessiveID);
+						if($excessiveID < 9999)
+						{
+							IPS_LogMessage("SceneModule", "copy values of an older version of the module to the new one");
+							foreach(IPS_GetChildrenIDs($this->InstanceID) as $c)
+							{
+								if(IPS_GetName($c) == IPS_GetName($child) && $c != $child)
+								{
+									SetValue($c, GetValue($child));
+								}
+							}
+						}
+						IPS_DeleteVariable($child);
+					}
+				}
+			}
+
 			//Delete Excessive Automation and DaySets
 			$sensor = $this->ReadPropertyInteger("Sensor");
-			if($sensor < 9999)
+			if($sensor < 9999 || $useDaySetModule === false)
 			{
 				if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) !== false)
 				{
@@ -554,6 +537,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 
 	public function RequestAction($Ident, $Value) {
 
+		//Get Info of current mode (DaySet, Time)
 		switch($Value) {
 			case "1":
 				$this->SaveValues($Ident);
@@ -575,7 +559,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 			$set = IPS_GetObjectIDByIdent("set$sensorWert", $setsIns);
 			$ActualSceneNumber = GetValue($set);
 			//Get Scene Identity by Association name 
-			$assoc = IPS_GetVariableProfile("ESZS.Selector" . $this->InstanceID)['Associations'][$ActualSceneNumber];
+			$assoc = IPS_GetVariableProfile("USZS.Selector" . $this->InstanceID)['Associations'][$ActualSceneNumber];
 			$sceneVar = IPS_GetObjectIDByName($assoc['Name'], $this->InstanceID);
 			$actualIdent = IPS_GetObject($sceneVar)['ObjectIdent'];
 			$this->CallValues($actualIdent."Sensor");
@@ -584,7 +568,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 		{
 			if($SceneNumber < 10000) //sender = selector
 			{
-				$assoc = IPS_GetVariableProfile("ESZS.Selector" . $this->InstanceID)['Associations'][$SceneNumber];
+				$assoc = IPS_GetVariableProfile("USZS.Selector" . $this->InstanceID)['Associations'][$SceneNumber];
 				$sceneVar = IPS_GetObjectIDByName($assoc['Name'], $this->InstanceID);
 				$actualIdent = IPS_GetObject($sceneVar)['ObjectIdent'];
 				$this->CallValues($actualIdent);
@@ -607,11 +591,11 @@ class UltimateSzenenSteuerung extends IPSModule {
 		$targetIDs = IPS_GetObjectIDByIdent("Targets", IPS_GetParent($this->InstanceID));
 		$data = Array();
 
-		IPS_LogMessage("DaySet_Scenes.SaveValues", "Saving new Scene Data Values...");
-		IPS_LogMessage("DaySet_Scenes.SaveValues", "Targets from ". IPS_GetName(IPS_GetParent($targetIDs)) ."/". IPS_GetName($targetIDs) ." ($targetIDs) are being used)");
+		IPS_LogMessage("SceneModule.SaveValues", "Saving new Scene Data Values...");
+		IPS_LogMessage("SceneModule.SaveValues", "Targets from ". IPS_GetName(IPS_GetParent($targetIDs)) ."/". IPS_GetName($targetIDs) ." ($targetIDs) are being used)");
 		
 
-		//We want to save all Lamp Values
+		//We want to save all Linked Values
 		foreach(IPS_GetChildrenIDs($targetIDs) as $TargetID) {
 			//only allow links
 			if(IPS_LinkExists($TargetID)) {
@@ -632,7 +616,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 			$content[$sceneDataID] = $sceneData;
 			@file_put_contents($this->docsFile, json_encode($content));
 		} catch (Exception $e) { 
-			IPS_LogMessage("DaySet_Scenes.SaveValues", "couldn't access backup file: " . $e->getMessage());
+			IPS_LogMessage("SceneModule.SaveValues", "couldn't access backup file: " . $e->getMessage());
 		}
 	}
 
@@ -650,7 +634,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 				$content[$sceneDataID] = $dataStr;
 				@file_put_contents($this->docsFile, json_encode($content));
 			} catch (Exception $e) { 
-				IPS_LogMessage("DaySet_Scenes.CallValues", "couldn't access backup file: " . $e->getMessage());
+				IPS_LogMessage("SceneModule.CallValues", "couldn't access backup file: " . $e->getMessage());
 			}
 
 			if(strpos($SceneIdent, "Sensor") !== false)
@@ -681,12 +665,12 @@ class UltimateSzenenSteuerung extends IPSModule {
 				IPS_SetEventActive($selectEvent, false);
 				IPS_Sleep(100);
 				$sceneVar = IPS_GetObjectIDByIdent($actualIdent, $this->InstanceID);
-				$sceneNum = $this->GetAssociationByName("ESZS.Selector" . $this->InstanceID, IPS_GetObject($sceneVar)['ObjectName']);
+				$sceneNum = $this->GetAssociationByName("USZS.Selector" . $this->InstanceID, IPS_GetObject($sceneVar)['ObjectName']);
 				SetValue($selectVar, $sceneNum);
 				IPS_Sleep(100);
 				IPS_SetEventActive($selectEvent, true);
 
-				IPS_LogMessage("DaySet_Scenes.CallValues", "Calling Values for Scene '".IPS_GetName($sceneVar)."'");
+				IPS_LogMessage("SceneModule.CallValues", "Calling Values for Scene '".IPS_GetName($sceneVar)."'");
 				//Set the actual values for the targets
 				foreach($data as $id => $value) {
 					if (IPS_VariableExists($id)){
@@ -735,7 +719,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 						echo "No SceneData for this Scene";
 					}
 				} catch (Exception $e) { 
-					IPS_LogMessage("DaySet_Scenes.CallValues", "couldn't access backup file when SceneData was empty: " . $e->getMessage());
+					IPS_LogMessage("SceneModule.CallValues", "couldn't access backup file when SceneData was empty: " . $e->getMessage());
 				}
 			}
 			else

@@ -1,6 +1,7 @@
 {
   "elements":
   [
+		{ "type": "CheckBox", "name": "ModeDaySet", "caption": "DaySet Steuerung aktivieren" },
 	{
 		"type": "List",
 		"name": "Names",
@@ -36,6 +37,9 @@
 		}
 	  ]
 	},
-	{ "type": "SelectVariable", "name": "Sensor", "caption": "Sensor" }
+	{ "type": "SelectVariable", "name": "Sensor", "caption": "Sensor" },
+	{ "type": "Label", "label": "Zeitschaltung Konfiguration" },	
+	{ "type": "CheckBox", "name": "ModeTime", "caption": "Zeitschaltung aktivieren" },
+	{ "type": "CheckBox", "name": "Loop", "caption": "Zeitschaltung loopen" }
   ]
 }
