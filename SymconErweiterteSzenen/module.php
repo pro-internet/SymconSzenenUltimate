@@ -283,8 +283,6 @@ class UltimateSzenenSteuerung extends IPSModule {
 			{
 				$useDaySetModule = $this->ReadPropertyBoolean("ModeDaySet");
 				$useTimeModule = $this->ReadPropertyBoolean("ModeTime");
-				if($useDaySetModule && $useTimeModule)
-					echo "you can't combine multiple Module Modes inside one Module";
 			}
 			
 			// All the DaySet Module related things:
