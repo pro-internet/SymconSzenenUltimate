@@ -1128,17 +1128,52 @@ class UltimateSzenenSteuerung extends IPSModule {
 			{
 				try {
 					$content = json_decode(@file_get_contents($this->docsFile), true);
-					if(array_key_exists($sceneDataID, $content))
+					if(isset($content))
 					{
-						if(strlen($content[$sceneDataID]) > 3)
+						if(array_key_exists($sceneDataID, $content))
 						{
-							SetValue($sceneDataID, $content[$sceneDataID]);
-							$this->CallValues($SceneIdent);
+							if(strlen($content[$sceneDataID]) > 3)
+							{
+								SetValue($sceneDataID, $content[$sceneDataID]);
+								$this->CallValues($SceneIdent);
+							}
+						}
+						else
+						{
+							echo "No SceneData for this Scene";
+
+							//Set Selector to current Scene anyways
+							{
+								$selectVar = IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID));
+								$eventsCat = IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID);
+								$selectEvent = IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat);
+								IPS_SetEventActive($selectEvent, false);
+								IPS_Sleep(100);
+								$sceneVar = IPS_GetObjectIDByIdent($actualIdent, $this->InstanceID);
+								$sceneNum = $this->GetAssociationByName("USZS.Selector" . $this->InstanceID, IPS_GetObject($sceneVar)['ObjectName']);
+								SetValue($selectVar, $sceneNum);
+								IPS_Sleep(100);
+								IPS_SetEventActive($selectEvent, true);
+							}
 						}
 					}
-					else
+					else //if there was never any targets
 					{
 						echo "No SceneData for this Scene";
+
+						//Set Selector to current Scene anyways
+						{
+							$selectVar = IPS_GetObjectIDByIdent("Selector", IPS_GetParent($this->InstanceID));
+							$eventsCat = IPS_GetObjectIDByIdent("EventsCat", $this->InstanceID);
+							$selectEvent = IPS_GetObjectIDByIdent("SelectorOnChange", $eventsCat);
+							IPS_SetEventActive($selectEvent, false);
+							IPS_Sleep(100);
+							$sceneVar = IPS_GetObjectIDByIdent($actualIdent, $this->InstanceID);
+							$sceneNum = $this->GetAssociationByName("USZS.Selector" . $this->InstanceID, IPS_GetObject($sceneVar)['ObjectName']);
+							SetValue($selectVar, $sceneNum);
+							IPS_Sleep(100);
+							IPS_SetEventActive($selectEvent, true);
+						}
 					}
 				} catch (Exception $e) { 
 					IPS_LogMessage("SceneModule.CallValues", "couldn't access backup file when SceneData was empty: " . $e->getMessage());
