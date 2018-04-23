@@ -462,17 +462,17 @@ class UltimateSzenenSteuerung extends IPSModule {
 						IPS_DeleteEvent($autoVarEvent);
 					}
 
-					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) !== false)
+					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetObjectIDByIdent("Steuerung", IPS_GetParent($this->InstanceID))) !== false)
 					{
-						$autoVar = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID));
+						$autoVar = IPS_GetObjectIDByIdent("Automatik", IPS_GetObjectIDByIdent("Steuerung", IPS_GetParent($this->InstanceID)));
 						IPS_DeleteVariable($autoVar);
 						$autoVarEvent = IPS_GetObjectIDByIdent("AutomatikEvent", $eventsCat);
 						IPS_DeleteEvent($autoVarEvent);
 					}
 
-					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID)) !== false)
+					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetObjectIDByIdent("Steuerung", IPS_GetParent($this->InstanceID))) !== false)
 					{
-						$sperreVar = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID));
+						$sperreVar = IPS_GetObjectIDByIdent("Sperre", IPS_GetObjectIDByIdent("Steuerung", IPS_GetParent($this->InstanceID)));
 						IPS_DeleteVariable($sperreVar);
 						$sperreVarEvent = IPS_GetObjectIDByIdent("SperreEvent", $eventsCat);
 						IPS_DeleteEvent($sperreVarEvent);
