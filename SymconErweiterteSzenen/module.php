@@ -344,7 +344,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 				}
 
 				//Create "Steuerung" Dummy-Module 
-				$this->checkDummy("Steuerung", IPS_GetParent($this->InstanceID));
+				$this->checkDummy("Steuerung", IPS_GetParent($this->InstanceID), -1000);
 
 				//Create Automatik for this instance
 				{
@@ -1502,7 +1502,7 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
 
         }
 
-        public function checkDummy ($name, $parent = "") {
+        public function checkDummy ($name, $parent = "", $index = 0) {
 
             if ($this->searchObjectByName($name) == 0) {
 
@@ -1513,6 +1513,7 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
                 	IPS_SetParent($targets, $parent);
 
                 }
+                IPS_SetPosition($targets, $index);
                 //$this->hide($targets);
 
             }
