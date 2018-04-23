@@ -1507,7 +1507,7 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
             if ($this->searchObjectByName($name) == 0) {
 
                 $targets = $this->createFolder($name);
-                $this->hide($targets);
+                //$this->hide($targets);
 
             }
 
