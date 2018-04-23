@@ -344,7 +344,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 				}
 
 				//Create "Steuerung" Dummy-Module 
-				$this->checkFolder("Steuerung", IPS_GetParent($this->InstanceID));
+				$this->checkDummy("Steuerung", IPS_GetParent($this->InstanceID));
 
 				//Create Automatik for this instance
 				{
