@@ -344,14 +344,14 @@ class UltimateSzenenSteuerung extends IPSModule {
 				}
 
 				//Create "Steuerung" Dummy-Module 
-				$this->checkFolder("Steuerung");
+				$this->checkFolder("Steuerung", IPS_GetParent($this->InstanceID));
 
 				//Create Automatik for this instance
 				{
-					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->searchObjectByName("Steuerung"))) === false)
+					if(@IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))) === false)
 						$vid = IPS_CreateVariable(0);
 					else
-						$vid = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->searchObjectByName("Steuerung")));
+						$vid = IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))));
 					IPS_SetName($vid, "Automatik");
 					IPS_SetParent($vid, IPS_GetParent($this->searchObjectByName("Steuerung")));
 					IPS_SetPosition($vid, -999);
@@ -1502,18 +1502,24 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
 
         }
 
-        public function checkFolder ($name) {
+        public function checkDummy ($name, $parent = "") {
 
             if ($this->searchObjectByName($name) == 0) {
 
-                $targets = $this->createFolder($name);
+                $targets = $this->createDummy($name);
+                
+                if ($parent != "") {
+
+                	IPS_SetParent($targets, $parent);
+
+                }
                 //$this->hide($targets);
 
             }
 
         }
 
-        public function createFolder ($name) {
+        public function createDummy ($name) {
 
             $units = IPS_CreateInstance($this->getModuleGuidByName());
             IPS_SetName($units, $name);
