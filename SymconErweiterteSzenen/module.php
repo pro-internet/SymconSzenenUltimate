@@ -1064,15 +1064,15 @@ class UltimateSzenenSteuerung extends IPSModule {
 
 			if(strpos($SceneIdent, "Sensor") !== false)
 			{
-				if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) !== false)
+				if(@IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))) !== false)
 				{
-					$automatikID = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID));
+					$automatikID = IPS_GetObjectIDByIdent("Sperre", $this->searchObjectByName("Automatik", IPS_GetParent($this->InstanceID)));
 					$auto = GetValue($automatikID);
 				}
 
-				if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID)) !== false)
+				if(@IPS_GetObjectIDByIdent("Sperre", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))) !== false)
 				{
-					$SperreID = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID));
+					$SperreID = IPS_GetObjectIDByIdent("Sperre", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID)));
 					$sperre = GetValue($SperreID);
 				}
 			}
