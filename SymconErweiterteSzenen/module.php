@@ -377,12 +377,12 @@ class UltimateSzenenSteuerung extends IPSModule {
 
 				//Create Sperre for this instance
 				{
-					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->searchObjectByName("Steuerung"))) === false)
+					if(@IPS_GetObjectIDByIdent("Sperre", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))) === false)
 						$vid = IPS_CreateVariable(0);
 					else
-						$vid = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->searchObjectByName("Steuerung")));
+						$vid = IPS_GetObjectIDByIdent("Sperre", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID)));
 					IPS_SetName($vid, "Sperre");
-					IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
+					IPS_SetParent($vid, $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID)));
 					IPS_SetPosition($vid, -999);
 					IPS_SetIdent($vid, "Sperre");
 					IPS_SetVariableCustomAction($vid, $svs);
