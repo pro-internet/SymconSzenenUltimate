@@ -343,14 +343,17 @@ class UltimateSzenenSteuerung extends IPSModule {
 					}
 				}
 
+				//Create "Steuerung" Dummy-Module 
+				$this->checkFolder("Steuerung");
+
 				//Create Automatik for this instance
 				{
-					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID)) === false)
+					if(@IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->searchObjectByName("Steuerung"))) === false)
 						$vid = IPS_CreateVariable(0);
 					else
-						$vid = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->InstanceID));
+						$vid = IPS_GetObjectIDByIdent("Automatik", IPS_GetParent($this->searchObjectByName("Steuerung")));
 					IPS_SetName($vid, "Automatik");
-					IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
+					IPS_SetParent($vid, IPS_GetParent($this->searchObjectByName("Steuerung")));
 					IPS_SetPosition($vid, -999);
 					IPS_SetIdent($vid, "Automatik");
 					IPS_SetVariableCustomAction($vid, $svs);
@@ -374,10 +377,10 @@ class UltimateSzenenSteuerung extends IPSModule {
 
 				//Create Sperre for this instance
 				{
-					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID)) === false)
+					if(@IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->searchObjectByName("Steuerung"))) === false)
 						$vid = IPS_CreateVariable(0);
 					else
-						$vid = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->InstanceID));
+						$vid = IPS_GetObjectIDByIdent("Sperre", IPS_GetParent($this->searchObjectByName("Steuerung")));
 					IPS_SetName($vid, "Sperre");
 					IPS_SetParent($vid, IPS_GetParent($this->InstanceID));
 					IPS_SetPosition($vid, -999);
@@ -1426,5 +1429,127 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
 			}
 		}
 	}
+
+	//Helpers
+	public function easyCreateVariable ($type = 1, $name = "Variable", $position = "", $index = 0, $defaultValue = null) {
+
+            if ($position == "") {
+
+                $position = $this->InstanceID;
+
+            } 
+
+            $newVariable = IPS_CreateVariable($type);
+            IPS_SetName($newVariable, $name);
+            IPS_SetParent($newVariable, $position);
+            IPS_SetPosition($newVariable, $index);
+
+            if ($defaultValue != null) {
+
+                SetValue($newVariable, $defaultValue);
+
+            }
+
+            return $newVariable;
+
+        }
+
+    public function checkVar ($var, $type = 1, $profile = false , $position = "", $index = 0, $defaultValue = null) {
+
+            if ($this->searchObjectByName($var) == 0) {
+
+                $nVar = $this->easyCreateVariable($type, $var ,$position, $index, $defaultValue);
+
+                if ($type == 0 && $profile == true) {
+
+                    $this->addSwitch($nVar);
+
+                }
+
+                if ($type == 1 && $profile == true) {
+
+                    $this->addTime($nVar);
+
+                }
+
+                return $nVar;
+
+            } else {
+
+                return $this->searchObjectByName($var);
+
+            }
+
+        }
+
+	public function getModuleGuidByName ($name = "Dummy Module") {
+
+            $allModules = IPS_GetModuleList();
+            $GUID = ""; //init
+
+            foreach ($allModules as $module) {
+
+                if (IPS_GetModule($module)['ModuleName'] == $name) {
+
+                    $GUID = $module;
+                    break;
+
+                }
+
+            }
+
+            return $GUID;
+
+        }
+
+        public function checkFolder ($name) {
+
+            if ($this->searchObjectByName($name) == 0) {
+
+                $targets = $this->createFolder($name);
+                $this->hide($targets);
+
+            }
+
+        }
+
+        public function createFolder ($name) {
+
+            $units = IPS_CreateInstance($this->getModuleGuidByName());
+            IPS_SetName($units, $name);
+            IPS_SetParent($units, $this->InstanceID);
+
+            return $units;
+
+        }	
+
+    public function searchObjectByName ($name, $searchIn = null) {
+
+            if ($searchIn == null) {
+
+                $searchIn = $this->InstanceID;
+
+            }
+
+            $childs = IPS_GetChildrenIDs($searchIn);
+
+            $returnId = 0;
+
+            foreach ($childs as $child) {
+
+                $childObject = IPS_GetObject($child);
+
+                if ($childObject['ObjectName'] == $name) {
+
+                    $returnId = $childObject['ObjectID'];
+
+                }
+
+            }
+
+            return $returnId;
+
+        }
+
 }
 ?>
