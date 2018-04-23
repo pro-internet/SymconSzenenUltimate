@@ -1504,7 +1504,7 @@ SetValue(\$_IPS['VARIABLE'], \$_IPS['VALUE']);
 
         public function checkDummy ($name, $parent = "", $index = 0) {
 
-            if ($this->searchObjectByName($name) == 0) {
+            if ($this->searchObjectByName($name, $parent) == 0) {
 
                 $targets = $this->createDummy($name);
                 
