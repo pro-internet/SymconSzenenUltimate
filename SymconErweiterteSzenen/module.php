@@ -351,7 +351,7 @@ class UltimateSzenenSteuerung extends IPSModule {
 					if(@IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))) === false)
 						$vid = IPS_CreateVariable(0);
 					else
-						$vid = IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID))));
+						$vid = IPS_GetObjectIDByIdent("Automatik", $this->searchObjectByName("Steuerung", IPS_GetParent($this->InstanceID)));
 					IPS_SetName($vid, "Automatik");
 					IPS_SetParent($vid, IPS_GetParent($this->searchObjectByName("Steuerung")));
 					IPS_SetPosition($vid, -999);
